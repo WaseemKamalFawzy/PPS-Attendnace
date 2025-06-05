@@ -1,31 +1,241 @@
-html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  width: 100%;
-}
-body {
-  background: #000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>QR Attendance (Full‐Screen + On‐Screen Debug)</title>
 
-/* Make the video fill the screen */
-#video-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: #000;
-  overflow: hidden;
-  z-index: 1;
-}
+  <style>
+    /* Make html/body fill the viewport */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: center;
+      color: #fff;
+      font-family: sans-serif;
+    }
 
-#qr-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+    /* FULL‐SCREEN video container */
+    #video-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
+      z-index: 1;
+    }
+    #qr-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* A translucent status/message overlay on top of video */
+    #overlay {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100vw;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      text-align: center;
+      z-index: 2;
+    }
+    #start-btn {
+      margin-top: 0.5rem;
+      padding: 0.6rem 1.2rem;
+      font-size: 1rem;
+      background: #2196F3;
+      border: none;
+      color: white;
+      border-radius: 4px;
+    }
+    #start-btn:disabled {
+      background: #555;
+    }
+
+    /* A scrollable debug area so you can see logs */
+    #debug {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 35vw;
+      max-width: 200px;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.8);
+      color: #0f0;
+      font-size: 0.75rem;
+      overflow-y: auto;
+      padding: 0.5rem;
+      box-sizing: border-box;
+      z-index: 3;
+    }
+  </style>
+
+  <!-- Load QR-Scanner from CDN -->
+  <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
+</head>
+
+<body>
+  <!-- 1) Full‐screen camera preview -->
+  <div id="video-container">
+    <video id="qr-video"></video>
+  </div>
+
+  <!-- 2) Overlay for status + “Start Camera” button -->
+  <div id="overlay">
+    <div id="status">⚠️ Camera not started yet.</div>
+    <button id="start-btn">▶️ Start Camera</button>
+  </div>
+
+  <!-- 3) On‐screen debug panel (scrollable) -->
+  <div id="debug">
+    <div><strong>DEBUG LOG:</strong></div>
+  </div>
+
+  <script>
+    // ────────────────────────────────────────────────────────────────
+    // 1) Your Google Apps Script “doGet” URL (replace with your own):
+    const LOG_URL = "https://script.google.com/macros/s/AKfycbxTLAyIuhbdQPaD_V9IDIo4c_ElVIyU3kEnpAy6_9D55jxQml2A822TjViBB8c2Oe8F/exec";
+    // ────────────────────────────────────────────────────────────────
+
+    const statusDiv = document.getElementById("status");
+    const startBtn   = document.getElementById("start-btn");
+    const debugDiv   = document.getElementById("debug");
+    let qrScanner    = null;
+    let lastScannedText = "";
+
+    // Utility: write errors/messages into #debug box:
+    function debugLog(msg) {
+      const entry = document.createElement("div");
+      entry.innerText = msg;
+      debugDiv.appendChild(entry);
+      // Keep scroll at bottom
+      debugDiv.scrollTop = debugDiv.scrollHeight;
+    }
+
+    // Called whenever a QR is successfully decoded:
+    function onDecodeSuccess(result) {
+      if (result === lastScannedText) return;
+      lastScannedText = result;
+      statusDiv.innerText = `📥 Scanned “${result}” → logging…`;
+      debugLog("Decoded QR: " + result);
+
+      // Test: ping the URL first (GET without ?id=) so we know if endpoint is reachable
+      debugLog("Pinging LOG_URL without parameters…");
+      fetch(LOG_URL)
+        .then(r => {
+          debugLog("Ping status: " + r.status + " " + r.statusText);
+          // Now actually log with ?id=
+          debugLog("Sending fetch to " + LOG_URL + "?id=" + encodeURIComponent(result));
+          return fetch(LOG_URL + "?id=" + encodeURIComponent(result));
+        })
+        .then(r => {
+          debugLog("Log‐fetch status: " + r.status + " " + r.statusText);
+          return r.text();
+        })
+        .then(txt => {
+          debugLog("Server returned text: " + txt);
+          if (txt.trim() === "OK") {
+            const now = new Date().toLocaleTimeString();
+            statusDiv.innerText = `✅ Logged “${result}” at ${now}`;
+            debugLog("→ Logged OK at “" + now + "”");
+          } else {
+            statusDiv.innerText = `⚠️ Server said: ${txt}`;
+            debugLog("→ Unexpected server response: “" + txt + "”");
+          }
+          // Reset after 2s so the same QR can be scanned again:
+          setTimeout(() => {
+            lastScannedText = "";
+            statusDiv.innerText = "🎥 Ready for next QR";
+          }, 2000);
+        })
+        .catch(err => {
+          debugLog("❌ Fetch network error: " + err);
+          statusDiv.innerText = "❌ Error logging. Check debug.";
+          setTimeout(() => {
+            lastScannedText = "";
+            statusDiv.innerText = "🎥 Ready for next QR";
+          }, 2000);
+        });
+    }
+
+    function onDecodeError(error) {
+      // Normally many “no QR in this frame” errors happen. You can uncomment to log them:
+      // debugLog("Decode error: " + error);
+    }
+
+    // ─── Start camera on button click ────────────────────────────────────────
+    startBtn.addEventListener("click", () => {
+      startBtn.disabled = true;
+      statusDiv.innerText = "🔄 Loading cameras…";
+      debugLog("User tapped Start Camera → initiating QrScanner.");
+
+      // Create a new QrScanner instance
+      qrScanner = new QrScanner(
+        document.getElementById("qr-video"),
+        onDecodeSuccess,
+        onDecodeError,
+        {
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+        }
+      );
+
+      // Enumerate cameras, pick “back” if available
+      QrScanner.listCameras(true)
+        .then(cameras => {
+          debugLog("listCameras returned: " + JSON.stringify(cameras.map(c => c.label)));
+          if (!cameras || cameras.length === 0) {
+            statusDiv.innerText = "⚠️ No cameras found.";
+            debugLog("⚠️ No cameras array or length 0");
+            startBtn.disabled = false;
+            return;
+          }
+
+          // Default to first, but prefer one whose label includes “back” or “env”
+          let backCameraId = cameras[0].id;
+          for (let cam of cameras) {
+            const label = cam.label.toLowerCase();
+            if (label.includes("back") || label.includes("env")) {
+              backCameraId = cam.id;
+              break;
+            }
+          }
+          debugLog("Chosen camera ID: " + backCameraId);
+
+          // Start scanning on that camera
+          qrScanner.start(backCameraId)
+            .then(() => {
+              statusDiv.innerText = "✅ Camera started. Point at QR.";
+              debugLog("🎥 QrScanner.start() succeeded.");
+            })
+            .catch(err => {
+              console.error("Could not start camera:", err);
+              debugLog("❌ QrScanner.start() failed: " + err);
+              statusDiv.innerText = "❌ Camera start failed: " + err;
+              startBtn.disabled = false;
+            });
+        })
+        .catch(err => {
+          console.error("Error listing cameras:", err);
+          debugLog("❌ listCameras() error: " + err);
+          statusDiv.innerText = "❌ Could not list cameras: " + err;
+          startBtn.disabled = false;
+        });
+    });
+  </script>
+</body>
+</html>
