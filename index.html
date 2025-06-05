@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>QR Attendance (Full-Screen + Big Button + Copy Logs)</title>
+  <title>QR Attendance (Improved UI)</title>
   <style>
     /* ───────────── Make html/body fill the viewport ───────────── */
     html, body {
@@ -11,19 +11,19 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
+      background: #000;
+      font-family: sans-serif;
+      color: #fff;
     }
     body {
-      background: #000;
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
+      justify-content: center;
       align-items: center;
-      color: #fff;
-      font-family: sans-serif;
       position: relative;
     }
 
-    /* ───────────── Full-screen video container ───────────── */
+    /* ───────────── Full-screen camera container ───────────── */
     #video-container {
       position: fixed;
       top: 0;
@@ -40,44 +40,48 @@
       object-fit: cover;
     }
 
-    /* ───────────── Overlay for “Start Camera” button & statuses ───────────── */
-    #overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.6);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+    /* ───────────── Container for the “Start Camera” button ───────────── */
+    #start-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       z-index: 2;
+      text-align: center;
     }
     #start-btn {
-      font-size: 1.5rem;
+      font-size: 2.5rem;
       padding: 1rem 2rem;
       background: #2196F3;
       border: none;
       color: #fff;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
     }
     #start-btn:disabled {
       background: #555;
       cursor: default;
     }
-    #status {
-      margin-top: 1rem;
+
+    /* ───────────── Fixed bottom bar for status messages ───────────── */
+    #status-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100vw;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 1rem;
       font-size: 1.25rem;
       text-align: center;
+      z-index: 2;
     }
 
     /* ───────────── Copy Logs button (bottom-right) ───────────── */
     #copy-btn {
       position: fixed;
-      bottom: 12px;
-      right: 12px;
+      bottom: 1rem;
+      right: 1rem;
       background: #333;
       color: #fff;
       border: none;
@@ -92,7 +96,7 @@
       opacity: 1;
     }
 
-    /* ───────────── On-screen debug panel (hidden by default) ───────────── */
+    /* ───────────── Hidden debug panel (toggle via Copy Logs) ───────────── */
     #debug {
       position: fixed;
       top: 0;
@@ -107,7 +111,7 @@
       padding: 0.5rem;
       box-sizing: border-box;
       z-index: 4;
-      display: none; /* hidden initially */
+      display: none;
     }
     #debug .log-entry {
       margin-bottom: 0.25rem;
@@ -124,16 +128,18 @@
     <video id="qr-video"></video>
   </div>
 
-  <!-- 2) Overlay with big “Start Camera” button & status -->
-  <div id="overlay">
+  <!-- 2) “Start Camera” button in center -->
+  <div id="start-container">
     <button id="start-btn">▶️ Start Camera</button>
-    <div id="status">⚠️ Camera not started yet.</div>
   </div>
 
-  <!-- 3) Copy Logs button -->
+  <!-- 3) Fixed bottom status bar for feedback -->
+  <div id="status-bar">⚠️ Camera not started yet.</div>
+
+  <!-- 4) Copy Logs button at bottom right -->
   <button id="copy-btn" title="Copy debug logs">📋 Logs</button>
 
-  <!-- 4) Hidden debug panel -->
+  <!-- 5) Hidden debug panel -->
   <div id="debug">
     <div><strong>DEBUG LOG:</strong></div>
   </div>
@@ -144,12 +150,12 @@
     const LOG_URL = "https://script.google.com/macros/s/AKfycbxTLAyIuhbdQPaD_V9IDIo4c_ElVIyU3kEnpAy6_9D55jxQml2A822TjViBB8c2Oe8F/exec";
     // ────────────────────────────────────────────────────────────────
 
-    const overlay   = document.getElementById("overlay");
-    const startBtn  = document.getElementById("start-btn");
-    const statusDiv = document.getElementById("status");
-    const copyBtn   = document.getElementById("copy-btn");
-    const debugDiv  = document.getElementById("debug");
-    let   qrScanner = null;
+    const startContainer = document.getElementById("start-container");
+    const startBtn       = document.getElementById("start-btn");
+    const statusBar      = document.getElementById("status-bar");
+    const copyBtn        = document.getElementById("copy-btn");
+    const debugDiv       = document.getElementById("debug");
+    let   qrScanner      = null;
     let   lastScannedText = "";
 
     // Utility: write messages into #debug panel
@@ -166,11 +172,10 @@
       if (result === lastScannedText) return;
       lastScannedText = result;
 
-      // 3) Request student name / mark attendance on server:
-      statusDiv.innerText = `📥 Scanned “${result}” - processing…`;
+      statusBar.innerText = `📥 Scanned “${result}” – processing…`;
       debugLog(`Decoded QR: ${result}`);
 
-      // Ping test (no ?id) to check endpoint:
+      // Ping test to check endpoint
       debugLog("Pinging LOG_URL...");
       fetch(LOG_URL)
         .then(r => {
@@ -184,38 +189,39 @@
         })
         .then(txt => {
           debugLog(`Server returned: ${txt}`);
-          // 4) Display big “scanned successfully” or error message:
-          if (txt.trim().toLowerCase().startsWith("error")) {
-            statusDiv.innerText = `❌ ${txt}`;
+          // Display big “scanned successfully” or error message:
+          if (txt.trim().toLowerCase().startsWith("error") ||
+              txt.trim().toLowerCase().startsWith("unknown") ||
+              txt.trim().toLowerCase().includes("already")) {
+            statusBar.innerText = `❌ ${txt}`;
           } else {
-            // e.g. “John Doe marked present” or “Already marked today”
-            statusDiv.innerText = `✅ ${txt}`;
+            statusBar.innerText = `✅ ${txt}`;
           }
           // Reset after 2s so you can scan again
           setTimeout(() => {
             lastScannedText = "";
-            statusDiv.innerText = "🎥 Ready for next QR";
+            statusBar.innerText = "🎥 Ready for next QR";
           }, 2000);
         })
         .catch(err => {
-          debugLog(`Fetch network error: ${err}`);
-          statusDiv.innerText = "❌ Network error. Check logs.";
+          debugLog(`❌ Fetch network error: ${err}`);
+          statusBar.innerText = "❌ Network error. Check logs.";
           setTimeout(() => {
             lastScannedText = "";
-            statusDiv.innerText = "🎥 Ready for next QR";
+            statusBar.innerText = "🎥 Ready for next QR";
           }, 2000);
         });
     }
 
     function onDecodeError(error) {
-      // ignore “no QR code” errors to avoid spamming
+      // Ignore “no QR code in frame” errors to avoid spamming the log
       // debugLog(`Decode error: ${error}`);
     }
 
-    // ─── Start camera on button click ────────────────────────────────────────
+    // ─── “Start Camera” button click handler ───────────────────────────────────
     startBtn.addEventListener("click", () => {
       startBtn.disabled = true;
-      statusDiv.innerText = "🔄 Loading cameras…";
+      statusBar.innerText = "🔄 Loading cameras…";
       debugLog("User tapped Start Camera → initiating QrScanner.");
 
       qrScanner = new QrScanner(
@@ -230,38 +236,40 @@
 
       QrScanner.listCameras(true)
         .then(cameras => {
-          debugLog(`listCameras returned: [${cameras.map(c=>c.label).join(", ")}]`);
+          debugLog(`listCameras returned: [${cameras.map(c => c.label).join(", ")}]`);
+
           if (!cameras || cameras.length === 0) {
-            statusDiv.innerText = "⚠️ No cameras found.";
+            statusBar.innerText = "⚠️ No cameras found.";
             debugLog("⚠️ No cameras available.");
             startBtn.disabled = false;
             return;
           }
-          // Pick a “back” camera if the label contains “back” or “environment”
-          let chosen = cameras[0].id;
+
+          // Pick a “back” camera if the label contains “back” or “env”
+          let chosenCamId = cameras[0].id;
           for (let cam of cameras) {
             const label = cam.label.toLowerCase();
             if (label.includes("back") || label.includes("env")) {
-              chosen = cam.id;
+              chosenCamId = cam.id;
               break;
             }
           }
-          debugLog(`Chosen camera ID: ${chosen}`);
+          debugLog(`Chosen camera ID: ${chosenCamId}`);
 
-          qrScanner.start(chosen)
+          qrScanner.start(chosenCamId)
             .then(() => {
-              statusDiv.innerText = "✅ Camera started. Point at QR.";
-              // Hide the overlay now that camera is live
-              overlay.style.display = "none";
+              statusBar.innerText = "✅ Camera started. Point at QR.";
+              // Hide the “Start Camera” button now that camera is live
+              startContainer.style.display = "none";
             })
             .catch(err => {
-              statusDiv.innerText = `❌ Camera start failed: ${err}`;
+              statusBar.innerText = `❌ Camera start failed: ${err}`;
               debugLog(`❌ QrScanner.start() failed: ${err}`);
               startBtn.disabled = false;
             });
         })
         .catch(err => {
-          statusDiv.innerText = `❌ Could not list cameras: ${err}`;
+          statusBar.innerText = `❌ Could not list cameras: ${err}`;
           debugLog(`❌ listCameras() error: ${err}`);
           startBtn.disabled = false;
         });
@@ -269,25 +277,24 @@
 
     // ─── Copy debug logs to clipboard ────────────────────────────────────────
     copyBtn.addEventListener("click", () => {
-      // Show debug panel if it’s not already visible
+      // Reveal debug panel if hidden
       if (debugDiv.style.display === "none") {
         debugDiv.style.display = "block";
       }
-      // Copy the entire debugDiv.textContent
+      // Copy debug text
       const textToCopy = debugDiv.innerText;
       navigator.clipboard.writeText(textToCopy)
         .then(() => {
-          // Show a temporary “Logs copied” message in status
-          statusDiv.innerText = "📋 Logs copied to clipboard";
+          statusBar.innerText = "📋 Logs copied to clipboard";
           setTimeout(() => {
             // If camera is live, revert status; else keep “Camera not started”
-            statusDiv.innerText = qrScanner && qrScanner.isScanning
+            statusBar.innerText = qrScanner && qrScanner.isScanning
               ? "🎥 Ready for next QR"
               : "⚠️ Camera not started yet.";
           }, 2000);
         })
         .catch(err => {
-          statusDiv.innerText = `❌ Copy failed: ${err}`;
+          statusBar.innerText = `❌ Copy failed: ${err}`;
         });
     });
   </script>
