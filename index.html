@@ -1,165 +1,31 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>QR Attendance (QR-Scanner with Manual Start)</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: sans-serif;
-      background: #f1f1f1;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      align-items: center;
-      justify-content: center;
-    }
-    #video-container {
-      width: 100%;
-      max-width: 480px;
-      height: 60vh;             /* ensures you see the video */
-      background: black;
-      position: relative;
-      overflow: hidden;
-    }
-    #qr-video {                 /* the <video> tag */
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    #status {
-      margin-top: 1rem;
-      font-size: 1rem;
-      color: #333;
-      text-align: center;
-      max-width: 480px;
-      padding: 0 1rem;
-    }
-    #start-btn {
-      margin-top: 1rem;
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
-      background: #007bff;
-      border: none;
-      color: white;
-      border-radius: 4px;
-    }
-    #start-btn:disabled {
-      background: #999;
-    }
-  </style>
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+body {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
 
-  <!-- Load QR-Scanner from a reliable CDN -->
-  <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
-</head>
-<body>
+/* Make the video fill the screen */
+#video-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+  z-index: 1;
+}
 
-  <div id="video-container">
-    <video id="qr-video"></video>
-  </div>
-  <div id="status">⚠️ Camera not started yet.</div>
-  <button id="start-btn">▶️ Start Camera</button>
-
-  <script>
-    // ────────────────────────────────────────────────────────────────
-    // 1) Replace with your actual Apps Script “doGet” URL:
-    const LOG_URL = "https://script.google.com/macros/s/AKfycbx…/exec";
-    // ────────────────────────────────────────────────────────────────
-
-    let lastScannedText = "";
-    let qrScanner = null;
-
-    const statusDiv = document.getElementById("status");
-    const startBtn   = document.getElementById("start-btn");
-    const videoElem  = document.getElementById("qr-video");
-
-    // Called when a QR is successfully decoded:
-    function onDecodeSuccess(result) {
-      if (result === lastScannedText) return;
-      lastScannedText = result;
-      statusDiv.innerText = `Scanned “${result}” → logging…`;
-
-      fetch(LOG_URL + "?id=" + encodeURIComponent(result))
-        .then(res => res.text())
-        .then(txt => {
-          if (txt.trim() === "OK") {
-            const now = new Date().toLocaleTimeString();
-            statusDiv.innerText = `✅ Logged “${result}” at ${now}`;
-          } else {
-            statusDiv.innerText = `⚠️ Server returned: ${txt}`;
-          }
-          // reset after 2 seconds so the same QR can be scanned again
-          setTimeout(() => {
-            lastScannedText = "";
-            statusDiv.innerText = "🎥 Ready for next QR";
-          }, 2000);
-        })
-        .catch(err => {
-          console.error("Network error:", err);
-          statusDiv.innerText = "❌ Error logging. Check console.";
-          setTimeout(() => {
-            lastScannedText = "";
-            statusDiv.innerText = "🎥 Ready for next QR";
-          }, 2000);
-        });
-    }
-
-    function onDecodeError(error) {
-      // You can log errors if needed, but it's normal to see “no QR code in frame” errors.
-      // console.warn("QR decode error:", error);
-    }
-
-    // ─── Wait for “Start Camera” button click ───────────────────────────────────
-    startBtn.addEventListener("click", () => {
-      startBtn.disabled = true;
-      statusDiv.innerText = "🔄 Loading cameras…";
-
-      // Create the QrScanner instance now
-      qrScanner = new QrScanner(
-        videoElem,
-        onDecodeSuccess,
-        onDecodeError,
-        {
-          highlightScanRegion: true,
-          highlightCodeOutline: true,
-        }
-      );
-
-      // Try to list and start the back camera
-      QrScanner.listCameras(true)
-        .then(cameras => {
-          if (!cameras || cameras.length === 0) {
-            statusDiv.innerText = "⚠️ No cameras found.";
-            startBtn.disabled = false;
-            return;
-          }
-          // Pick “back camera” if the label contains “back” or “environment”
-          let backCameraId = cameras[0].id;
-          for (let cam of cameras) {
-            const label = cam.label.toLowerCase();
-            if (label.includes("back") || label.includes("env")) {
-              backCameraId = cam.id;
-              break;
-            }
-          }
-
-          // Start scanning on that camera
-          qrScanner.start(backCameraId)
-            .then(() => {
-              statusDiv.innerText = "✅ Camera started. Point at QR.";
-            })
-            .catch(err => {
-              console.error("Could not start camera:", err);
-              statusDiv.innerText = "❌ Camera start failed: " + err;
-              startBtn.disabled = false;
-            });
-        })
-        .catch(err => {
-          console.error("Error listing cameras:", err);
-          statusDiv.innerText = "❌ Could not list cameras: " + err;
-          startBtn.disabled = false;
-        });
-    });
-  </script>
-</body>
-</html>
+#qr-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
