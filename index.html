@@ -6,206 +6,140 @@
   <style>
     body {
       margin: 0;
+      padding: 0;
       font-family: sans-serif;
+      background: #f1f1f1;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      background: #f1f1f1;
       height: 100vh;
+      align-items: center;
       justify-content: center;
     }
-    #reader {
-      width: 100%;
-      max-width: 480px;
-      margin: auto;
-    }
-    #status {
-      margin-top: 1rem;
-      font-size: 1rem;
-      color: #333;
-    }
-  </style>
-  <!-- 1) Include the “HTML5 QR code” library from unpkg CDN -->
-  <!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>QR Attendance Scanner</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      background: #f1f1f1;
-      height: 100vh;
-      justify-content: center;
-    }
-    #reader {
-      width: 100%;
-      max-width: 480px;
-      margin: auto;
-    }
-    #status {
-      margin-top: 1rem;
-      font-size: 1rem;
-      color: #333;
-    }
-  </style>
-  <!-- 1) Include the “HTML5 QR code” library from unpkg CDN -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.6/minified/html5-qrcode.min.js"></script>
-</head>
-<body>
 
+    /* Make sure the scanner box is visible */
+    #reader {
+      width: 100%;
+      max-width: 480px;
+      height: 60vh;           
+      background: black;      
+      position: relative;
+    }
+
+    #status {
+      margin-top: 1rem;
+      font-size: 1rem;
+      color: #333;
+      text-align: center;
+      max-width: 480px;
+      padding: 0 1rem;
+    }
+  </style>
+
+  <!-- 1) Load the HTML5-QRCode library FROM A RELIABLE CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+</head>
+
+<body>
   <div id="reader"></div>
   <div id="status">🎥 Point camera at student’s QR</div>
 
+  <!-- ─── 2) OUR SCRIPT: placed AFTER the library tag ───────────────────────── -->
   <script>
     // ────────────────────────────────────────────────────────────────
-    //  Replace this with your own Apps Script “doGet” URL:
-    const LOG_URL = "https://script.google.com/macros/s/AKfycbxTLAyIuhbdQPaD_V9IDIo4c_ElVIyU3kEnpAy6_9D55jxQml2A822TjViBB8c2Oe8F/exec";
+    //  Replace this with YOUR “doGet” URL from Google Apps Script
+    const LOG_URL = "https://script.google.com/macros/s/AKfycbx…/exec";
     // ────────────────────────────────────────────────────────────────
 
-    // This flag prevents multiple sends for the same frame:
     let lastScannedText = "";
 
-    // 1) Create the QR-decoder:
-    const html5QrCode = new Html5Qrcode("reader");
-
     function onScanSuccess(decodedText, decodedResult) {
-      // If it’s the same text as last time, ignore:
       if (decodedText === lastScannedText) return;
-
       lastScannedText = decodedText;
-      document.getElementById("status").innerText = `Scanned: ${decodedText} → logging…`;
+      document.getElementById("status").innerText =
+        `Scanned: “${decodedText}” → logging…`;
 
-      // 2) Send to Apps Script endpoint:
       fetch(LOG_URL + "?id=" + encodeURIComponent(decodedText))
         .then(res => res.text())
         .then(txt => {
           if (txt.trim() === "OK") {
-            document.getElementById("status").innerText = `✅ Logged “${decodedText}” at ${new Date().toLocaleTimeString()}`;
+            const now = new Date().toLocaleTimeString();
+            document.getElementById("status").innerText =
+              `✅ Logged “${decodedText}” at ${now}`;
           } else {
-            document.getElementById("status").innerText = `⚠️ Server returned: ${txt}`;
+            document.getElementById("status").innerText =
+              `⚠️ Server returned: ${txt}`;
           }
-          // Clear “lastScannedText” after 2 seconds so you can scan that same ID again if needed
           setTimeout(() => {
             lastScannedText = "";
-            document.getElementById("status").innerText = "🎥 Point camera at next QR";
+            document.getElementById("status").innerText =
+              "🎥 Point camera at next QR";
           }, 2000);
         })
         .catch(err => {
-          console.error(err);
-          document.getElementById("status").innerText = "❌ Error logging. Check console.";
+          console.error("Fetch error:", err);
+          document.getElementById("status").innerText =
+            "❌ Network error. Check console.";
           setTimeout(() => {
             lastScannedText = "";
-            document.getElementById("status").innerText = "🎥 Point camera at next QR";
+            document.getElementById("status").innerText =
+              "🎥 Point camera at next QR";
           }, 2000);
         });
     }
 
     function onScanFailure(error) {
-      // you can ignore or log these
+      // You can log errors here if you want:
       // console.warn(`QR decode failed: ${error}`);
     }
 
-    // 3) Start the camera & scanning loop:
-    Html5Qrcode.getCameras().then(cameras => {
-      if (cameras && cameras.length) {
-        // Prefer back camera if available:
-        const cameraId = cameras[0].id;
-        html5QrCode.start(
-          cameraId,
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          onScanSuccess,
-          onScanFailure
-        ).catch(err => {
-          document.getElementById("status").innerText = "❌ Camera start failed: " + err;
-        });
-      } else {
-        document.getElementById("status").innerText = "⚠️ No camera found.";
-      }
-    }).catch(err => {
-      document.getElementById("status").innerText = "❌ Error getting cameras: " + err;
-    });
-  </script>
-</body>
-</html>
-</head>
-<body>
-
-  <div id="reader"></div>
-  <div id="status">🎥 Point camera at student’s QR</div>
-
-  <script>
     // ────────────────────────────────────────────────────────────────
-    //  Replace this with your own Apps Script “doGet” URL:
-    const LOG_URL = "https://script.google.com/macros/s/AKfycbxTLAyIuhbdQPaD_V9IDIo4c_ElVIyU3kEnpAy6_9D55jxQml2A822TjViBB8c2Oe8F/exec";
+    //  Start the camera & scanning. Notice we use Html5Qrcode *after* it’s loaded.
     // ────────────────────────────────────────────────────────────────
-
-    // This flag prevents multiple sends for the same frame:
-    let lastScannedText = "";
-
-    // 1) Create the QR-decoder:
     const html5QrCode = new Html5Qrcode("reader");
 
-    function onScanSuccess(decodedText, decodedResult) {
-      // If it’s the same text as last time, ignore:
-      if (decodedText === lastScannedText) return;
-
-      lastScannedText = decodedText;
-      document.getElementById("status").innerText = `Scanned: ${decodedText} → logging…`;
-
-      // 2) Send to Apps Script endpoint:
-      fetch(LOG_URL + "?id=" + encodeURIComponent(decodedText))
-        .then(res => res.text())
-        .then(txt => {
-          if (txt.trim() === "OK") {
-            document.getElementById("status").innerText = `✅ Logged “${decodedText}” at ${new Date().toLocaleTimeString()}`;
-          } else {
-            document.getElementById("status").innerText = `⚠️ Server returned: ${txt}`;
+    Html5Qrcode.getCameras()
+      .then(cameras => {
+        if (cameras && cameras.length) {
+          // Prefer back camera if possible:
+          let cameraId = cameras[0].id;
+          for (let cam of cameras) {
+            if (
+              cam.label.toLowerCase().includes("back") ||
+              cam.label.toLowerCase().includes("env")
+            ) {
+              cameraId = cam.id;
+              break;
+            }
           }
-          // Clear “lastScannedText” after 2 seconds so you can scan that same ID again if needed
-          setTimeout(() => {
-            lastScannedText = "";
-            document.getElementById("status").innerText = "🎥 Point camera at next QR";
-          }, 2000);
-        })
-        .catch(err => {
-          console.error(err);
-          document.getElementById("status").innerText = "❌ Error logging. Check console.";
-          setTimeout(() => {
-            lastScannedText = "";
-            document.getElementById("status").innerText = "🎥 Point camera at next QR";
-          }, 2000);
-        });
-    }
-
-    function onScanFailure(error) {
-      // you can ignore or log these
-      // console.warn(`QR decode failed: ${error}`);
-    }
-
-    // 3) Start the camera & scanning loop:
-    Html5Qrcode.getCameras().then(cameras => {
-      if (cameras && cameras.length) {
-        // Prefer back camera if available:
-        const cameraId = cameras[0].id;
-        html5QrCode.start(
-          cameraId,
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          onScanSuccess,
-          onScanFailure
-        ).catch(err => {
-          document.getElementById("status").innerText = "❌ Camera start failed: " + err;
-        });
-      } else {
-        document.getElementById("status").innerText = "⚠️ No camera found.";
-      }
-    }).catch(err => {
-      document.getElementById("status").innerText = "❌ Error getting cameras: " + err;
-    });
+          html5QrCode
+            .start(
+              cameraId,
+              {
+                fps: 10,
+                qrbox: { width: 250, height: 250 }
+              },
+              onScanSuccess,
+              onScanFailure
+            )
+            .then(() => {
+              document.getElementById("status").innerText =
+                "✅ Camera started. Point at QR.";
+            })
+            .catch(err => {
+              console.error("Camera start failed:", err);
+              document.getElementById("status").innerText =
+                "❌ Camera failed to start: " + err;
+            });
+        } else {
+          document.getElementById("status").innerText =
+            "⚠️ No cameras found on this device.";
+        }
+      })
+      .catch(err => {
+        console.error("getCameras() error:", err);
+        document.getElementById("status").innerText =
+          "❌ Unable to query cameras: " + err;
+      });
   </script>
 </body>
 </html>
